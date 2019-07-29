@@ -4,7 +4,7 @@ import numpy as np
 import copy
 import cv2
 from imgaug import augmenters as iaa
-from BoundBox import BoundBox
+from boundbox import BoundBox
 
 def _interval_overlap(interval_a, interval_b):
 	x1, x2 = interval_a
