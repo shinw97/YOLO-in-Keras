@@ -115,7 +115,7 @@ def generate_Xy(imgs, labels, anchors, n_grid, net_input_size, n_class, normaliz
 	
 	for img in imgs:
 		
-		reshaped_image, all_objects = aug_image(img)
+		reshaped_image, all_objects = aug_image(imgn net_input_size)
 		
 		# image_name = img['filename']
 		# if '.jpg' not in image_name and '.png' not in image_name:
@@ -234,7 +234,7 @@ aug_pipe = iaa.Sequential(
 			random_order=True
 		)
 
-def aug_image(img, jitter=True):
+def aug_image(img, net_input_size, jitter=True):
 	image_name = img['filename']
 
 	image_name = img['filename']
@@ -268,7 +268,7 @@ def aug_image(img, jitter=True):
 		image = aug_pipe.augment_image(image)            
 		
 	# resize the image to standard size
-	image = cv2.resize(image, (224, 224))
+	image = cv2.resize(image, (net_input_size, net_input_size))
 	image = image[:,:,::-1]
 
 	# fix object's position and size
@@ -276,19 +276,19 @@ def aug_image(img, jitter=True):
 		for attr in ['xmin', 'xmax']:
 			if jitter: obj[attr] = int(obj[attr] * scale - offx)
 				
-			obj[attr] = int(obj[attr] * float(224) / w)
-			obj[attr] = max(min(obj[attr], 224), 0)
+			obj[attr] = int(obj[attr] * float(net_input_size) / w)
+			obj[attr] = max(min(obj[attr], net_input_size), 0)
 			
 		for attr in ['ymin', 'ymax']:
 			if jitter: obj[attr] = int(obj[attr] * scale - offy)
 				
-			obj[attr] = int(obj[attr] * float(224) / h)
-			obj[attr] = max(min(obj[attr], 224), 0)
+			obj[attr] = int(obj[attr] * float(net_input_size) / h)
+			obj[attr] = max(min(obj[attr], net_input_size), 0)
 
 		if jitter and flip > 0.5:
 			xmin = obj['xmin']
-			obj['xmin'] = 224 - obj['xmax']
-			obj['xmax'] = 224 - xmin
+			obj['xmin'] = net_input_size - obj['xmax']
+			obj['xmax'] = net_input_size - xmin
 			
 	return image, all_objs
 
