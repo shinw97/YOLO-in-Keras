@@ -566,11 +566,9 @@ class YoloNet(BaseNet):
 		x = BatchNormalization(name='norm_22')(x)
 		x = LeakyReLU(alpha=0.1)(x)
 
-		feature_extractor = Model(input_image, x)  
-		feature_extractor.load_weights(FULL_YOLO_BACKEND_PATH)
-
-		feature_extractor = Model(input_image, x) 
-		feature_extractor.load_weights(self.weights_dir)
+		feature_extractor = Model(input_image, x)
+		if self.weights_dir != '': 
+			feature_extractor.load_weights(self.weights_dir)
 
 		if transfer_learning:
 			for l in feature_extractor.layers:

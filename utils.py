@@ -115,7 +115,7 @@ def generate_Xy(imgs, labels, anchors, n_grid, net_input_size, n_class, normaliz
 	
 	for img in imgs:
 		
-		reshaped_image, all_objects = aug_image(imgn net_input_size)
+		reshaped_image, all_objects = aug_image(img, net_input_size)
 		
 		# image_name = img['filename']
 		# if '.jpg' not in image_name and '.png' not in image_name:
