@@ -11,7 +11,7 @@ import tensorflow as tf
 import numpy as np
 import cv2
 
-from utils import load_annotation, compute_overlap, compute_ap, decode_netout
+from utils import load_annotation, compute_overlap, compute_ap, decode_netout, generate_Xy
 
 class BaseNet(object):
 	"""docstring for BaseNet"""
@@ -49,6 +49,18 @@ class BaseNet(object):
 		layer.set_weights([new_kernel, new_bias])
 		
 		return final_yolo_model
+
+	def set_generator(self, imgs, batch_size, aug):
+		pointer = 0
+		while True:
+			imgs_generated = []
+			for i in range(batch_size):
+				if pointer == len(imgs):
+					pointer = 0
+				imgs_generated.append(imgs[pointer])
+				pointer += 1
+			X_train, y_train = generate_Xy(imgs_generated, self.labels, self.anchors, self.n_grid, self.net_input_size, self.n_class, self.normalize, aug=aug)
+			yield (X_train, y_train)
 
 	def custom_loss(self, y_true, y_pred):
 		anchors = self.anchors
@@ -351,6 +363,29 @@ class BaseNet(object):
 		print('mAP: {:.4f}'.format(sum(average_precisions.values()) / len(average_precisions)))
 
 		# return average_precisions    
+
+	def predict_boxes(model, image):
+		boxes = self.predict(model, image)
+		image_h, image_w, _ = image.shape
+
+		for box in boxes:
+			xmin = int(box.xmin*image_w)
+			ymin = int(box.ymin*image_h)
+			xmax = int(box.xmax*image_w)
+			ymax = int(box.ymax*image_h)
+
+			cv2.rectangle(image, (xmin,ymin), (xmax,ymax), (0,255,0), 3)
+			cv2.putText(image, 
+						self.labels[box.get_label()] + ' ' + str(box.get_score()), 
+						(xmin, ymin - 13), 
+						cv2.FONT_HERSHEY_SIMPLEX, 
+						1e-3 * image_h, 
+						(0,255,0), 2)
+			
+		return image
+
+	def normalize(self, image):
+		raise NotImplementedError("Not implemented yet.")       
 
 class VGG16Net(BaseNet):
 	"""docstring for VGG16"""

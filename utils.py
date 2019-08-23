@@ -101,7 +101,7 @@ def parse_annotation(ann_dir, img_dir, labels=[]):
 	return all_imgs, seen_labels
 
 
-def generate_Xy(imgs, labels, anchors, n_grid, net_input_size, n_class, normalize):
+def generate_Xy(imgs, labels, anchors, n_grid, net_input_size, n_class, normalize, aug=True):
 	
 	# input images
 	X_train = np.zeros((len(imgs), net_input_size, net_input_size, 3))
@@ -115,7 +115,7 @@ def generate_Xy(imgs, labels, anchors, n_grid, net_input_size, n_class, normaliz
 	
 	for img in imgs:
 		
-		reshaped_image, all_objects = aug_image(img, net_input_size)
+		reshaped_image, all_objects = aug_image(img, net_input_size, aug=aug)
 		
 		# image_name = img['filename']
 		# if '.jpg' not in image_name and '.png' not in image_name:
@@ -234,7 +234,7 @@ aug_pipe = iaa.Sequential(
 			random_order=True
 		)
 
-def aug_image(img, net_input_size, jitter=True):
+def aug_image(img, net_input_size, aug):
 	image_name = img['filename']
 
 	image_name = img['filename']
@@ -248,7 +248,7 @@ def aug_image(img, net_input_size, jitter=True):
 	h, w, c = image.shape
 	all_objs = copy.deepcopy(img['object'])
 
-	if jitter:
+	if aug:
 		### scale the image
 		scale = np.random.uniform() / 10. + 1.
 		image = cv2.resize(image, (0,0), fx = scale, fy = scale)
@@ -274,18 +274,18 @@ def aug_image(img, net_input_size, jitter=True):
 	# fix object's position and size
 	for obj in all_objs:
 		for attr in ['xmin', 'xmax']:
-			if jitter: obj[attr] = int(obj[attr] * scale - offx)
+			if aug: obj[attr] = int(obj[attr] * scale - offx)
 				
 			obj[attr] = int(obj[attr] * float(net_input_size) / w)
 			obj[attr] = max(min(obj[attr], net_input_size), 0)
 			
 		for attr in ['ymin', 'ymax']:
-			if jitter: obj[attr] = int(obj[attr] * scale - offy)
+			if aug: obj[attr] = int(obj[attr] * scale - offy)
 				
 			obj[attr] = int(obj[attr] * float(net_input_size) / h)
 			obj[attr] = max(min(obj[attr], net_input_size), 0)
 
-		if jitter and flip > 0.5:
+		if aug and flip > 0.5:
 			xmin = obj['xmin']
 			obj['xmin'] = net_input_size - obj['xmax']
 			obj['xmax'] = net_input_size - xmin
