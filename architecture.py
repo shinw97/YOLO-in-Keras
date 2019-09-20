@@ -364,7 +364,7 @@ class BaseNet(object):
 
 		# return average_precisions    
 
-	def predict_boxes(model, image):
+	def predict_boxes(self, model, image):
 		boxes = self.predict(model, image)
 		image_h, image_w, _ = image.shape
 
