@@ -374,13 +374,22 @@ class BaseNet(object):
 			xmax = int(box.xmax*image_w)
 			ymax = int(box.ymax*image_h)
 
-			cv2.rectangle(image, (xmin,ymin), (xmax,ymax), (0,255,0), 3)
-			cv2.putText(image, 
-						self.labels[box.get_label()] + ' ' + str(box.get_score()), 
-						(xmin, ymin - 13), 
-						cv2.FONT_HERSHEY_SIMPLEX, 
-						1e-3 * image_h, 
-						(0,255,0), 2)
+			if box.get_label() == 0:
+				cv2.rectangle(image, (xmin,ymin), (xmax,ymax), (0,0,255), 1)
+				# cv2.putText(image, 
+				# 			self.labels[box.get_label()] + ' ' + str(box.get_score()), 
+				# 			(xmin, ymin - 13), 
+				# 			cv2.FONT_HERSHEY_SIMPLEX, 
+				# 			1e-3 * image_h, 
+				# 			(0,255,0), 2)
+			else:
+				cv2.rectangle(image, (xmin,ymin), (xmax,ymax), (255,0,0), 1)
+				# cv2.putText(image, 
+				# 			self.labels[box.get_label()] + ' ' + str(box.get_score()), 
+				# 			(xmin, ymin - 13), 
+				# 			cv2.FONT_HERSHEY_SIMPLEX, 
+				# 			1e-3 * image_h, 
+				# 			(0,255,0), 2)
 			
 		return image
 
