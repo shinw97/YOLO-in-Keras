@@ -1,11 +1,10 @@
-from keras.applications.vgg16 import VGG16
-from keras.models import load_model, Model
-from keras.layers import Input, Lambda, Conv2D, Reshape, MaxPooling2D, BatchNormalization
-from keras.optimizers import SGD, Adam, RMSprop
-from keras.layers.advanced_activations import LeakyReLU
-from keras.layers.merge import concatenate
-from keras.applications.resnet50 import ResNet50
-from keras.applications import InceptionV3
+from tensorflow.keras.applications.vgg16 import VGG16
+from tensorflow.keras.models import load_model, Model
+from tensorflow.keras.layers import Input, Lambda, Conv2D, Reshape, MaxPooling2D, BatchNormalization, LeakyReLU, concatenate
+from tensorflow.keras.optimizers import SGD, Adam, RMSprop
+from tensorflow.keras.applications.resnet50 import ResNet50
+from tensorflow.keras.applications import InceptionV3
+from tensorflow.keras.applications import MobileNet
 
 import tensorflow as tf
 import numpy as np
@@ -79,7 +78,7 @@ class BaseNet(object):
 		# (#, 7, 7, 5)
 		mask_shape = tf.shape(y_true)[:4]
 		# (1, 7, 7, 1, 1)
-		cell_x = tf.to_float(tf.reshape(tf.tile(tf.range(row), [col]), (1, row, col, 1, 1)))
+		cell_x = tf.cast(tf.reshape(tf.tile(tf.range(row), [col]), (1, row, col, 1, 1)), dtype=tf.float32)
 		# (1, 7, 7, 1, 1)
 		cell_y = tf.transpose(cell_x, (0,2,1,3,4))
 		# (32, 7, 7, 5, 2)
@@ -159,7 +158,7 @@ class BaseNet(object):
 		### confidence mask: penelize predictors + penalize boxes with low IOU
 		iou_scores = tf.expand_dims(iou_scores, axis=-1)
 		best_ious = tf.reduce_max(iou_scores, axis=-1)
-		conf_mask = conf_mask + tf.to_float(best_ious < 0.6) * (1 - y_true[..., 4]) * no_object_scale
+		conf_mask = conf_mask + tf.cast(best_ious < 0.6, dtype=tf.float32) * (1 - y_true[..., 4]) * no_object_scale
 
 		#     print(conf_mask)
 
@@ -188,9 +187,9 @@ class BaseNet(object):
 		"""
 		Finalize the loss
 		"""
-		nb_coord_box = tf.reduce_sum(tf.to_float(coord_mask > 0.0))
-		nb_conf_box  = tf.reduce_sum(tf.to_float(conf_mask  > 0.0))
-		n_class_box = tf.reduce_sum(tf.to_float(class_mask > 0.0))
+		nb_coord_box = tf.reduce_sum(tf.cast(coord_mask > 0.0, dtype=tf.float32))
+		nb_conf_box  = tf.reduce_sum(tf.cast(conf_mask  > 0.0, dtype=tf.float32))
+		n_class_box = tf.reduce_sum(tf.cast(class_mask > 0.0, dtype=tf.float32))
 
 		loss_xy    = tf.reduce_sum(tf.square(true_box_xy-pred_box_xy)* coord_mask) / (nb_coord_box + 1e-6) / 2.
 		loss_wh    = tf.reduce_sum(tf.square(true_box_wh-pred_box_wh)* coord_mask) / (nb_coord_box + 1e-6) / 2.
@@ -367,15 +366,28 @@ class BaseNet(object):
 	def predict_boxes(self, model, image):
 		boxes = self.predict(model, image)
 		image_h, image_w, _ = image.shape
+		count_dict = {}
 
+		# with open('coords.txt', 'a+') as f:
 		for box in boxes:
+			x_center, y_center = box.get_center()
+			x_center = int(x_center*image_w)
+			y_center = int(y_center*image_h)
+			
+			# f.write(""+str(x_center)+ ' ' + str(y_center) + '\n')
+
 			xmin = int(box.xmin*image_w)
 			ymin = int(box.ymin*image_h)
 			xmax = int(box.xmax*image_w)
 			ymax = int(box.ymax*image_h)
 
 			if box.get_label() == 0:
-				cv2.rectangle(image, (xmin,ymin), (xmax,ymax), (0,0,255), 1)
+				cv2.rectangle(image, (xmin,ymin), (xmax,ymax), (0,0,255), 2)
+
+				# if 0 in count_dict:
+				# 	count_dict[0] += 1
+				# else:
+				# 	count_dict[0] = 1
 				# cv2.putText(image, 
 				# 			self.labels[box.get_label()] + ' ' + str(box.get_score()), 
 				# 			(xmin, ymin - 13), 
@@ -383,15 +395,25 @@ class BaseNet(object):
 				# 			1e-3 * image_h, 
 				# 			(0,255,0), 2)
 			else:
-				cv2.rectangle(image, (xmin,ymin), (xmax,ymax), (255,0,0), 1)
+				cv2.rectangle(image, (xmin,ymin), (xmax,ymax), (0,255,0), 2)
+
+				# if 1 in count_dict:
+				# 	count_dict[1] += 1
+				# else:
+				# 	count_dict[1] = 1
 				# cv2.putText(image, 
 				# 			self.labels[box.get_label()] + ' ' + str(box.get_score()), 
 				# 			(xmin, ymin - 13), 
 				# 			cv2.FONT_HERSHEY_SIMPLEX, 
 				# 			1e-3 * image_h, 
 				# 			(0,255,0), 2)
+		# f.write("---\n")
+		# ---- <Indent> ----
+		# with open('counts.txt', 'a+') as c:
+		# 	c.write(str(len(boxes)))
+		# 	c.write('\n')
 			
-		return image
+		# return image
 
 	def normalize(self, image):
 		raise NotImplementedError("Not implemented yet.")       
@@ -613,6 +635,37 @@ class YoloNet(BaseNet):
 		feature_extractor = Model(input_image, x)
 		if self.weights_dir != '': 
 			feature_extractor.load_weights(self.weights_dir)
+
+		if transfer_learning:
+			for l in feature_extractor.layers:
+				l.trainable = False
+
+		# feature_extractor.summary()
+		return feature_extractor
+
+	def normalize(self, reshaped_image):
+		def norm(reshaped_image):
+			reshaped_image = reshaped_image.astype('float')
+			reshaped_image /= 255.
+			return reshaped_image
+		return norm(reshaped_image)
+
+
+
+class YOLOMobileNet(BaseNet):
+	"""docstring for VGG16"""
+	def __init__(self, net_input_size, anchors, n_class, weights_dir, labels):
+		super(YOLOMobileNet, self).__init__(net_input_size, anchors, n_class, weights_dir, labels)
+
+	def create_base_network(self, transfer_learning=False):
+		model = MobileNet(include_top=False, 
+			weights=self.weights_dir, 
+			input_shape=(self.net_input_size, self.net_input_size, 3), 
+			pooling='avg')
+		
+		model.layers.pop()
+		
+		feature_extractor = Model(model.layers[0].input, model.layers[-1].output) 
 
 		if transfer_learning:
 			for l in feature_extractor.layers:

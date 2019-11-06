@@ -24,3 +24,6 @@ class BoundBox:
 			self.score = self.classes[self.get_label()]
 			
 		return self.score
+
+	def get_center(self):
+		return (self.xmin + (self.xmax - self.xmin)/ 2), (self.ymin + (self.ymax - self.ymin)/ 2)
