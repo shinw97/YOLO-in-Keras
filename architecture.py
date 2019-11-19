@@ -507,7 +507,7 @@ class YoloNet(BaseNet):
 
 		# the function to implement the orgnization layer (thanks to github.com/allanzelener/YAD2K)
 		def space_to_depth_x2(x):
-			return tf.space_to_depth(x, block_size=2)
+			return tf.nn.space_to_depth(x, block_size=2)
 
 		# Layer 1
 		x = Conv2D(32, (3,3), strides=(1,1), padding='same', name='conv_1', use_bias=False)(input_image)
