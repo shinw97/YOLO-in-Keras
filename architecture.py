@@ -429,9 +429,7 @@ class VGG16Net(BaseNet):
 			input_shape=(self.net_input_size, self.net_input_size, 3), 
 			pooling='avg')
 		
-		model.layers.pop()
-		
-		feature_extractor = Model(model.layers[0].input, model.layers[-1].output) 
+		feature_extractor = Model(model.layers[0].input, model.layers[-2].output) 
 
 		if transfer_learning:
 			for l in feature_extractor.layers:
@@ -663,9 +661,7 @@ class YOLOMobileNet(BaseNet):
 			input_shape=(self.net_input_size, self.net_input_size, 3), 
 			pooling='avg')
 		
-		model.layers.pop()
-		
-		feature_extractor = Model(model.layers[0].input, model.layers[-1].output) 
+		feature_extractor = Model(model.layers[0].input, model.layers[-2].output) 
 
 		if transfer_learning:
 			for l in feature_extractor.layers:
