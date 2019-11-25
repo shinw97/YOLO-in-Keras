@@ -51,7 +51,12 @@ class BaseNet(object):
 
 	def set_generator(self, imgs, batch_size, aug):
 		pointer = 0
+		# in_loop = False
 		while True:
+			# if in_loop:
+			# 	in_loop = True
+			# 	del X_train
+			# 	del y_train
 			imgs_generated = []
 			for i in range(batch_size):
 				if pointer == len(imgs):
@@ -448,7 +453,7 @@ class VGG16Net(BaseNet):
 		return norm(reshaped_image)
 
 class TinyYoloNet(BaseNet):
-	"""docstring for VGG16"""
+	"""docstring for Tiny YOLO Net"""
 	def __init__(self, net_input_size, anchors, n_class, weights_dir, labels):
 		super(TinyYoloNet, self).__init__(net_input_size, anchors, n_class, weights_dir, labels)
 
@@ -497,7 +502,7 @@ class TinyYoloNet(BaseNet):
 		return norm(reshaped_image)
 
 class YoloNet(BaseNet):
-	"""docstring for VGG16"""
+	"""docstring for Full YOLO Net"""
 	def __init__(self, net_input_size, anchors, n_class, weights_dir, labels):
 		super(YoloNet, self).__init__(net_input_size, anchors, n_class, weights_dir, labels)
 
@@ -651,7 +656,7 @@ class YoloNet(BaseNet):
 
 
 class YOLOMobileNet(BaseNet):
-	"""docstring for VGG16"""
+	"""docstring for MobileNet"""
 	def __init__(self, net_input_size, anchors, n_class, weights_dir, labels):
 		super(YOLOMobileNet, self).__init__(net_input_size, anchors, n_class, weights_dir, labels)
 
@@ -661,7 +666,35 @@ class YOLOMobileNet(BaseNet):
 			input_shape=(self.net_input_size, self.net_input_size, 3), 
 			pooling='avg')
 		
-		feature_extractor = Model(model.layers[0].input, model.layers[-2].output) 
+		feature_extractor = Model(model.layers[0].input, model.layers[-2].output)
+
+		if transfer_learning:
+			for l in feature_extractor.layers:
+				l.trainable = False
+
+		# feature_extractor.summary()
+		return feature_extractor
+
+	def normalize(self, reshaped_image):
+		def norm(reshaped_image):
+			reshaped_image = reshaped_image.astype('float')
+			reshaped_image /= 255.
+			return reshaped_image
+		return norm(reshaped_image)
+
+
+class YOLOResNet50(BaseNet):
+	"""docstring for ResNet50"""
+	def __init__(self, net_input_size, anchors, n_class, weights_dir, labels):
+		super(YOLOResNet, self).__init__(net_input_size, anchors, n_class, weights_dir, labels)
+
+	def create_base_network(self, transfer_learning=False):
+		model = ResNet50(include_top=False, 
+			weights=self.weights_dir, 
+			input_shape=(self.net_input_size, self.net_input_size, 3), 
+			pooling='avg')
+		
+		feature_extractor = Model(model.layers[0].input, model.layers[-2].output)
 
 		if transfer_learning:
 			for l in feature_extractor.layers:
