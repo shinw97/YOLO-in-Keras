@@ -80,7 +80,7 @@ class BaseNet(object):
 		no_object_scale = 1
 		object_scale = 1
 		class_scale = 1
-		coord_scale = 1
+		coord_scale = 1.5
 
 		# (#, 7, 7, 5)
 		mask_shape = tf.shape(y_true)[:4]
@@ -176,22 +176,6 @@ class BaseNet(object):
 		class_mask = y_true[..., 4] * tf.gather(class_wt, true_box_class) * class_scale       
 
 		"""
-		Warm-up training
-		"""
-		#     no_boxes_mask = tf.to_float(coord_mask < self.coord_scale/2.)
-		#     seen = tf.assign_add(seen, 1.)
-
-		#     true_box_xy, true_box_wh, coord_mask = tf.cond(tf.less(seen, warmup_batches+1), 
-		#                           lambda: [true_box_xy + (0.5 + cell_grid) * no_boxes_mask, 
-		#                                    true_box_wh + tf.ones_like(true_box_wh) * \
-		#                                    np.reshape(anchors, [1,1,1,self.n_bounding_box,2]) * \
-		#                                    no_boxes_mask, 
-		#                                    tf.ones_like(coord_mask)],
-		#                           lambda: [true_box_xy, 
-		#                                    true_box_wh,
-		#                                    coord_mask])
-
-		"""
 		Finalize the loss
 		"""
 		nb_coord_box = tf.reduce_sum(tf.cast(coord_mask > 0.0, dtype=tf.float32))
@@ -205,29 +189,17 @@ class BaseNet(object):
 		loss_class = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=true_box_class, logits=pred_box_class)
 		loss_class = tf.reduce_sum(loss_class * class_mask) / (n_class_box + 1e-6)
 
-		#     loss = tf.cond(tf.less(seen, warmup_batches+1), 
-		#                   lambda: loss_xy + loss_wh + loss_conf + loss_class + 10,
-		#                   lambda: loss_xy + loss_wh + loss_conf + loss_class)
-
 
 		loss = loss_xy + loss_wh + loss_conf + loss_class
-		#     loss = tf_print(loss, [loss_xy], 'loss xy:')
-		#     loss = tf_print(loss, [loss_wh], 'loss wh:')
-		#     loss = tf_print(loss, [loss_conf], 'loss conf:')
-		#     loss = tf_print(loss, [loss_class], 'loss class:')
-		#     loss = tf_print(loss, [loss], 'Total loss:')
-		#     tf.print(loss_xy, loss_wh)
 
 		return loss
 
 	def compile_model(self, final_yolo_model, optimizer):
-		
-		# optimizer = Adam(lr=learning_rate, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0)
 
 		final_yolo_model.compile(loss=self.custom_loss, optimizer=optimizer)
 		return final_yolo_model
 
-	def predict(self, model, image):
+	def predict(self, model, image, obj_threshold, nms_threshold):
 		'''
 		# Arguments
 			model          : Model.
@@ -244,17 +216,17 @@ class BaseNet(object):
 		input_image = np.expand_dims(input_image, 0)
 
 		netout = model.predict(input_image)[0]
-		boxes  = decode_netout(netout, self.anchors, self.n_class)
+		boxes  = decode_netout(netout, self.anchors, self.n_class, obj_threshold=obj_threshold, nms_threshold=nms_threshold)
 
 		return boxes
 
-	def evaluate(self, model, imgs, iou_threshold=0.3, score_threshold=0.3):
+	def evaluate(self, model, imgs, obj_threshold=0.3, nms_threshold=0.3, iou_threshold=0.5):
 		"""
 		# Arguments
 			model           : The model to evaluate.
 			imgs            : list of parsed test_img dictionaries.
-			iou_threshold   : The threshold used to consider when a detection is positive or negative.
-			score_threshold : The score confidence threshold to use for detections.
+			obj_threshold 	: The score confidence threshold to use for detections.
+			nms_threshold   : The threshold used to consider when a detection is positive or negative.
 		# Returns
 			A dict mapping class names to mAP scores.
 		"""    
@@ -264,8 +236,10 @@ class BaseNet(object):
 
 		all_detections     = [[None for i in range(self.n_class)] for j in range(test_size)]
 		all_annotations    = [[None for i in range(self.n_class)] for j in range(test_size)]
+		ious = []
 
 		for i in range(test_size):
+
 			image_name = imgs[i]['filename']
 			
 			if '.jpg' not in image_name and '.png' not in image_name:
@@ -276,7 +250,7 @@ class BaseNet(object):
 			raw_height, raw_width, raw_channels = raw_image.shape
 
 			# make the boxes and the labels
-			pred_boxes  = self.predict(model, raw_image)
+			pred_boxes  = self.predict(model, raw_image, obj_threshold, nms_threshold)
 			
 			score = np.array([box.score for box in pred_boxes])
 			pred_labels = np.array([box.label for box in pred_boxes])        
@@ -332,6 +306,8 @@ class BaseNet(object):
 					assigned_annotation = np.argmax(overlaps, axis=1)
 					max_overlap         = overlaps[0, assigned_annotation]
 
+					ious.append(max_overlap)
+
 					if max_overlap >= iou_threshold and assigned_annotation not in detected_annotations:
 						false_positives = np.append(false_positives, 0)
 						true_positives  = np.append(true_positives, 1)
@@ -362,24 +338,32 @@ class BaseNet(object):
 			average_precision  = compute_ap(recall, precision)  
 			average_precisions[label] = average_precision
 
-
+		map_dict = {}
 		# print evaluation
 		for label, average_precision in average_precisions.items():
+			map_dict[self.labels[label]] = average_precision
 			print(self.labels[label], '{:.4f}'.format(average_precision))
+		
 		print('mAP: {:.4f}'.format(sum(average_precisions.values()) / len(average_precisions)))
+		print('average IOU: {:.4f}'.format(np.mean(ious)))
+		
+		average_map = sum(average_precisions.values()) / len(average_precisions)
 
+		return [average_map, map_dict, np.mean(ious)]
 		# return average_precisions    
 
-	def predict_boxes(self, model, image):
-		boxes = self.predict(model, image)
+	def predict_boxes(self, model, image, obj_threshold, nms_threshold):
+		boxes = self.predict(model, image, obj_threshold=obj_threshold, nms_threshold=nms_threshold)
 		image_h, image_w, _ = image.shape
-		count_dict = {}
+		count_dict = {0: 0, 1: 0}
+		prediction_info = {'coords': {0:[], 1:[]}, 'total_count': len(boxes)}
 
 		# with open('coords.txt', 'a+') as f:
 		for box in boxes:
 			x_center, y_center = box.get_center()
 			x_center = int(x_center*image_w)
 			y_center = int(y_center*image_h)
+			# prediction_info['coords'].append((x_center, y_center))
 			
 			# f.write(""+str(x_center)+ ' ' + str(y_center) + '\n')
 
@@ -389,10 +373,11 @@ class BaseNet(object):
 			ymax = int(box.ymax*image_h)
 
 			if box.get_label() == 0:
-				cv2.rectangle(image, (xmin,ymin), (xmax,ymax), (0,0,255), 2)
+				cv2.rectangle(image, (xmin,ymin), (xmax,ymax), (0,0,255), 3)
+				prediction_info['coords'][0].append((x_center, y_center))
 
-				# if 0 in count_dict:
-				# 	count_dict[0] += 1
+				if 0 in count_dict:
+					count_dict[0] += 1
 				# else:
 				# 	count_dict[0] = 1
 				# cv2.putText(image, 
@@ -402,10 +387,10 @@ class BaseNet(object):
 				# 			1e-3 * image_h, 
 				# 			(0,255,0), 2)
 			else:
-				cv2.rectangle(image, (xmin,ymin), (xmax,ymax), (0,255,0), 2)
-
-				# if 1 in count_dict:
-				# 	count_dict[1] += 1
+				cv2.rectangle(image, (xmin,ymin), (xmax,ymax), (0,255,0), 3)
+				prediction_info['coords'][1].append((x_center, y_center))
+				if 1 in count_dict:
+					count_dict[1] += 1
 				# else:
 				# 	count_dict[1] = 1
 				# cv2.putText(image, 
@@ -419,8 +404,11 @@ class BaseNet(object):
 		# with open('counts.txt', 'a+') as c:
 		# 	c.write(str(len(boxes)))
 		# 	c.write('\n')
-			
-		# return image
+		cv2.putText(image, 'bee-A: ' + str(count_dict[0]), (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1e-3 * image.shape[1], (0,255,0), 2)
+		if len(self.labels) > 1:
+				cv2.putText(image, 'bee-B: ' + str(count_dict[1]), (10, 100), cv2.FONT_HERSHEY_SIMPLEX, 1e-3 * image.shape[1], (0,255,0), 2)
+		prediction_info['count_dict'] = count_dict
+		return prediction_info
 
 	def normalize(self, image):
 		raise NotImplementedError("Not implemented yet.")       
@@ -658,7 +646,7 @@ class YoloNet(BaseNet):
 class YoloMobileNet(BaseNet):
 	"""docstring for MobileNet"""
 	def __init__(self, net_input_size, anchors, n_class, weights_dir, labels):
-		super(YOLOMobileNet, self).__init__(net_input_size, anchors, n_class, weights_dir, labels)
+		super(YoloMobileNet, self).__init__(net_input_size, anchors, n_class, weights_dir, labels)
 
 	def create_base_network(self, transfer_learning=False):
 		model = MobileNet(include_top=False, 
